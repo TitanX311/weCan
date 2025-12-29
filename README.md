@@ -8,10 +8,10 @@ The [WeCan mobile app](https://play.google.com/store/apps/details?id=com.nita.we
 
 
 ## **10. Contributors & Contact**
-For questions, contributions, or reporting issues, contact:
-- **Lead Developer:** Ankita Paul
-- **Email:** paulankita378@gmail.com
-- **GitHub:** [https://github.com/ankitapaul74]
+ For questions, contributions, or reporting issues, contact:
+ - **Lead Developer:** Ankita Paul
+ - **Email:** paulankita378@gmail.com
+ - **GitHub:** [https://github.com/ankitapaul74]
 
 ## Contributions are welcome! Please feel free to submit a Pull Request.
 <img width="1440" alt="Screenshot 2025-03-17 at 10 42 16 AM" src="https://github.com/user-attachments/assets/752a6688-f852-46be-b371-f61c091efc37" />

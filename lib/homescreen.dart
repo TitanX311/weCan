@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:WeCan/attendance.dart';
+import 'package:WeCan/attendance_details.dart';
 import 'package:WeCan/loginscreen.dart';
 import 'package:WeCan/our_leaders.dart';
 import 'package:WeCan/student.dart';
@@ -6,6 +8,7 @@ import 'package:WeCan/syllabus.dart';
 import 'package:WeCan/volunteers.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'carousel.dart';
@@ -20,6 +23,7 @@ class Homescreen extends StatefulWidget {
 
 class _HomescreenState extends State<Homescreen> {
   int _currentIndex = 0;
+  bool _isAdmin = false;
 
   void _onTabTapped(int index) {
     if (index == _currentIndex) return;
@@ -60,6 +64,44 @@ class _HomescreenState extends State<Homescreen> {
     }
   }
 
+  Future<void> _loadAdminStatus() async {
+    final isAdmin = await isUserAdmin();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isAdmin = isAdmin;
+    });
+  }
+
+  Future<bool> isUserAdmin() async {
+    final user = FirebaseAuth.instance.currentUser;
+    print(user);
+
+    if (user == null || user.email == null) {
+      return false; // not logged in → not admin
+    }
+
+    final email = user.email!.trim().toLowerCase();
+
+    final doc = await FirebaseFirestore.instance
+        .collection('attendance_permission')
+        .doc('admins')
+        .get();
+
+    if (!doc.exists) return false;
+
+    final List admins = doc.data()?['admin_list'] ?? [];
+
+    return admins.contains(email);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAdminStatus();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,7 +121,11 @@ class _HomescreenState extends State<Homescreen> {
         backgroundColor: Colors.green,
         elevation: 4,
       ),
+
+      ///=================body==================///
       body: HomeScreenContent(),
+
+      ///============bottom navigation bar===========///
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: _onTabTapped,
@@ -173,6 +219,37 @@ class _HomescreenState extends State<Homescreen> {
                       );
                     },
                   ),
+                  ListTile(
+                    leading: const Icon(Icons.people, color: Colors.green),
+                    title: const Text(
+                      'Attendance Details',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => AttendanceDetailsPage()),
+                      );
+                    },
+                  ),
+                  if (_isAdmin) ...[
+                    ListTile(
+                      leading: const Icon(Icons.add, color: Colors.green),
+                      title: const Text(
+                        'Attendance',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w500),
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => Attendance()),
+                        );
+                      },
+                    ),
+                  ]
                 ],
               ),
             ),
@@ -233,13 +310,13 @@ class HomeScreenContent extends StatelessWidget {
               );
             },
           ),
-          SizedBox(height: 16.0),
+          const SizedBox(height: 16.0),
           Padding(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: TodayCard(day: today),
           ),
-          SizedBox(height: 16.0),
+          const SizedBox(height: 16.0),
           Padding(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -247,7 +324,8 @@ class HomeScreenContent extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => OurLeadersScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const OurLeadersScreen()),
                 );
               },
             ),
@@ -258,12 +336,14 @@ class HomeScreenContent extends StatelessWidget {
   }
 }
 
+///========================sliding images=========================///
 class EnhancedCarousel extends StatefulWidget {
   final List<String> base64Images;
-  EnhancedCarousel({required this.base64Images});
+
+  const EnhancedCarousel({super.key, required this.base64Images});
 
   @override
-  _EnhancedCarouselState createState() => _EnhancedCarouselState();
+  State<EnhancedCarousel> createState() => _EnhancedCarouselState();
 }
 
 class _EnhancedCarouselState extends State<EnhancedCarousel> {
@@ -330,10 +410,11 @@ class _EnhancedCarouselState extends State<EnhancedCarousel> {
   }
 }
 
+///=======================Leaders section==========================///
 class OurLeadersCard extends StatelessWidget {
   final VoidCallback onTap;
 
-  const OurLeadersCard({Key? key, required this.onTap}) : super(key: key);
+  const OurLeadersCard({super.key, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -354,7 +435,7 @@ class OurLeadersCard extends StatelessWidget {
             BoxShadow(
               color: Colors.black.withOpacity(0.2),
               blurRadius: 8,
-              offset: Offset(0, 4),
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -367,7 +448,7 @@ class OurLeadersCard extends StatelessWidget {
                 color: Colors.white.withOpacity(0.2),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.group, size: 40, color: Colors.white),
+              child: const Icon(Icons.group, size: 40, color: Colors.white),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -383,14 +464,15 @@ class OurLeadersCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  const Text(
                     "Meet the passionate leaders of our club",
                     style: TextStyle(fontSize: 14, color: Colors.white70),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 20),
+            const Icon(Icons.arrow_forward_ios,
+                color: Colors.white70, size: 20),
           ],
         ),
       ),
@@ -398,10 +480,11 @@ class OurLeadersCard extends StatelessWidget {
   }
 }
 
+///======================Volunteers section======================///
 class TodayCard extends StatelessWidget {
   final String day;
 
-  TodayCard({required this.day});
+  const TodayCard({super.key, required this.day});
 
   @override
   Widget build(BuildContext context) {
@@ -448,7 +531,7 @@ class TodayCard extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => VolunteerPage(),
+            builder: (context) => const VolunteerPage(),
           ),
         );
       },
@@ -534,14 +617,14 @@ class TodayCard extends StatelessWidget {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => VolunteerPage()),
+          MaterialPageRoute(builder: (context) => const VolunteerPage()),
         );
       },
       child: Card(
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Container(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           height: 150,
           decoration: BoxDecoration(
             color: Colors.red.shade50,
@@ -555,11 +638,11 @@ class TodayCard extends StatelessWidget {
                   color: Colors.red.shade100,
                   shape: BoxShape.circle,
                 ),
-                padding: EdgeInsets.all(12),
+                padding: const EdgeInsets.all(12),
                 child: Icon(Icons.beach_access,
                     color: Colors.red.shade600, size: 24),
               ),
-              SizedBox(width: 16),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -573,7 +656,7 @@ class TodayCard extends StatelessWidget {
                         color: Colors.red.shade800,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
                       "Today is a holiday! 🎉\nNo volunteers are assigned today.",
                       style: TextStyle(

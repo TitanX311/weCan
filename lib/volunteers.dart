@@ -1,12 +1,15 @@
 import 'package:WeCan/vedit.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import 'package:intl/intl.dart';
 
 class VolunteerPage extends StatefulWidget {
+  const VolunteerPage({super.key});
+
   @override
-  _VolunteerPageState createState() => _VolunteerPageState();
+  State<VolunteerPage> createState() => _VolunteerPageState();
 }
 
 class _VolunteerPageState extends State<VolunteerPage> {
@@ -25,10 +28,9 @@ class _VolunteerPageState extends State<VolunteerPage> {
     _initializeDaysInFirestore();
   }
 
-
   void _initializeDaysInFirestore() async {
     final CollectionReference volunteersCollection =
-    FirebaseFirestore.instance.collection('volunteers');
+        FirebaseFirestore.instance.collection('volunteers');
 
     for (String day in days) {
       final DocumentSnapshot dayDoc = await volunteersCollection.doc(day).get();
@@ -41,7 +43,6 @@ class _VolunteerPageState extends State<VolunteerPage> {
       }
     }
   }
-
 
   void refreshPage() {
     setState(() {});
@@ -61,19 +62,25 @@ class _VolunteerPageState extends State<VolunteerPage> {
           ),
         ),
         centerTitle: true,
-        leading: const Icon(Icons.volunteer_activism, color: Colors.white),
+        // leading: const Icon(Icons.volunteer_activism, color: Colors.white),
         backgroundColor: Colors.green,
       ),
       body: Padding(
         padding: const EdgeInsets.all(10.0),
-        child: ListView.builder(
-          itemCount: days.length,
-          itemBuilder: (context, index) {
-            return DayCard(
-              day: days[index],
-              onUpdate: refreshPage,
-            );
-          },
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                itemCount: days.length,
+                itemBuilder: (context, index) {
+                  return DayCard(
+                    day: days[index],
+                    onUpdate: refreshPage,
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -82,14 +89,17 @@ class _VolunteerPageState extends State<VolunteerPage> {
 
 class DayCard extends StatelessWidget {
   final String day;
-  final VoidCallback onUpdate;
+  final VoidCallback? onUpdate;
 
-  DayCard({required this.day, required this.onUpdate});
+  const DayCard({super.key, required this.day, this.onUpdate});
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('volunteers').doc(day).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('volunteers')
+          .doc(day)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildCard(
@@ -108,28 +118,34 @@ class DayCard extends StatelessWidget {
         }
 
         var data = snapshot.data!.data() as Map<String, dynamic>;
+        // print(data);
         List<String> volunteers = List<String>.from(data['volunteers'] ?? []);
 
         return _buildCard(
           context: context,
           title: day.toUpperCase(),
-          subtitle: volunteers.isEmpty ? "No volunteers assigned" : volunteers.join(', '),
+          subtitle: volunteers.isEmpty
+              ? "No volunteers assigned"
+              : volunteers.join(', '),
           onTap: () async {
             // Pass the volunteers data and reference to the next page for editing
-            bool isUpdated = await Navigator.push(
+            //(bool isUpdated =) was causing unhandled exception
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => VolunteerEditPage(
                   dayName: data['dayName'] ?? day,
                   volunteers: volunteers,
-                  dayReference: FirebaseFirestore.instance.collection('volunteers').doc(day),
+                  dayReference: FirebaseFirestore.instance
+                      .collection('volunteers')
+                      .doc(day),
                 ),
               ),
             );
 
-            if (isUpdated) {
-              onUpdate();
-            }
+            // if (isUpdated) {
+            //   onUpdate();
+            // }
           },
         );
       },

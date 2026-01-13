@@ -84,30 +84,38 @@ class _AttendanceState extends State<Attendance> {
         backgroundColor: Colors.green,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          // IconButton(
+          //   icon: const Icon(Icons.calendar_today),
+          //   onPressed: _pickDate,
+          // ),
           IconButton(
-            icon: const Icon(Icons.calendar_today),
-            onPressed: _pickDate,
+            icon: const Icon(Icons.add),
+            onPressed: _showAddVolunteerDialog,
           ),
         ],
       ),
       body: Column(
         children: [
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  DateFormat('EEEE, dd MMMM yyyy').format(_selectedDate),
-                  style: GoogleFonts.lato(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green.shade800,
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _pickDate,
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    DateFormat('EEEE, dd MMMM yyyy').format(_selectedDate),
+                    style: GoogleFonts.lato(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green.shade800,
+                    ),
                   ),
-                ),
-                Icon(Icons.date_range, color: Colors.green.shade700),
-              ],
+                  Icon(Icons.date_range, color: Colors.green.shade700),
+                ],
+              ),
             ),
           ),
           const Divider(
@@ -121,12 +129,6 @@ class _AttendanceState extends State<Attendance> {
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddVolunteerDialog,
-        backgroundColor: Colors.green,
-        tooltip: 'Add Volunteer',
-        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
@@ -142,11 +144,16 @@ class VolunteerAttendanceList extends StatefulWidget {
       _VolunteerAttendanceListState();
 }
 
+enum AttendanceStatus { none, present, absent }
+
 class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
   bool _isLoading = true;
   List<String> _scheduledVolunteers = [];
-  Set<String> _presentVolunteers = {};
+  Map<String, AttendanceStatus> _attendanceMap = {};
   List<String> _displayVolunteers = [];
+
+  Map<String, String> allVolunteerPhoneMap = {};
+  Map<String, String> volunteerPhoneMap = {}; // for displayed only
 
   List<String> get displayedVolunteers => _displayVolunteers;
 
@@ -166,26 +173,30 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
 
   void _loadData() async {
     if (!mounted) return;
+
     setState(() {
       _isLoading = true;
     });
 
     final scheduled = await _getScheduledVolunteers(widget.selectedDate);
-    final present = await _getPresentVolunteers(widget.selectedDate);
+    final attendance = await _getAttendance(widget.selectedDate);
 
-    if (mounted) {
-      setState(() {
-        _scheduledVolunteers = scheduled;
-        _presentVolunteers = present;
-        _updateDisplayList();
-        _isLoading = false;
-      });
-    }
+    if (!mounted) return;
+
+    setState(() {
+      _scheduledVolunteers = scheduled;
+      _attendanceMap = attendance;
+      _updateDisplayList();
+      _isLoading = false;
+    });
   }
 
   void _updateDisplayList() {
-    _displayVolunteers =
-        {..._scheduledVolunteers, ..._presentVolunteers}.toList()..sort();
+    _displayVolunteers = {
+      ..._scheduledVolunteers,
+      ..._attendanceMap.keys,
+    }.toList()
+      ..sort();
   }
 
   Future<List<String>> _getScheduledVolunteers(DateTime date) async {
@@ -213,16 +224,22 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     return volunteerPhoneMap.keys.toList();
   }
 
-  Future<Set<String>> _getPresentVolunteers(DateTime date) async {
-    final dateString = DateFormat('dd-MM-yyyy').format(date);
+  Future<Map<String, AttendanceStatus>> _getAttendance(DateTime date) async {
+    final dateKey = DateFormat('dd-MM-yyyy').format(date);
     final doc = await FirebaseFirestore.instance
         .collection('attendance')
-        .doc(dateString)
+        .doc(dateKey)
         .get();
-    if (doc.exists && doc.data()!.containsKey('presentVolunteers')) {
-      return Set<String>.from(doc.data()!['presentVolunteers']);
-    }
-    return {};
+
+    if (!doc.exists) return {};
+
+    final raw = Map<String, dynamic>.from(doc.data()!['attendance'] ?? {});
+    return raw.map((k, v) {
+      return MapEntry(
+        k,
+        v == 'present' ? AttendanceStatus.present : AttendanceStatus.absent,
+      );
+    });
   }
 
   Map<String, String> _parseVolunteerPhoneMap(List<String> rawList) {
@@ -246,60 +263,37 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     return map;
   }
 
-  Map<String, String> volunteerPhoneMap = {};
-
-  Future<void> _toggleAttendance(String volunteerName, bool isPresent) async {
-    final phone = volunteerPhoneMap[volunteerName];
+  Future<void> _toggleAttendance(
+    String name,
+    AttendanceStatus newStatus,
+  ) async {
+    final phone = volunteerPhoneMap[name];
     if (phone == null) return;
 
-    final originalPresentState = Set<String>.from(_presentVolunteers);
+    final dateKey = DateFormat('dd-MM-yyyy').format(widget.selectedDate);
+    final prevStatus = _attendanceMap[name] ?? AttendanceStatus.none;
+
+    if (prevStatus == newStatus) return;
 
     setState(() {
-      if (isPresent) {
-        _presentVolunteers.add(volunteerName);
-      } else {
-        _presentVolunteers.remove(volunteerName);
-      }
-      _updateDisplayList();
+      _attendanceMap[name] = newStatus;
     });
 
-    final dateString = DateFormat('dd-MM-yyyy').format(widget.selectedDate);
-    final dayName =
-        DateFormat('EEEE').format(widget.selectedDate).toLowerCase();
-
     final attendanceRef =
-        FirebaseFirestore.instance.collection('attendance').doc(dateString);
+        FirebaseFirestore.instance.collection('attendance').doc(dateKey);
 
-    try {
-      // Update attendance collection
-      if (isPresent) {
-        await attendanceRef.set({
-          'dayName': dayName,
-          'presentVolunteers': FieldValue.arrayUnion([volunteerName]),
-        }, SetOptions(merge: true));
-      } else {
-        await attendanceRef.update({
-          'presentVolunteers': FieldValue.arrayRemove([volunteerName]),
-        });
+    await attendanceRef.set({
+      'attendance': {
+        name: newStatus == AttendanceStatus.present ? 'present' : 'absent'
       }
+    }, SetOptions(merge: true));
 
-      // ✅ Update profile summary
-      await _updateProfileAttendance(
-        name: volunteerName,
-        phone: phone,
-        isPresent: isPresent,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating attendance: $e')),
-      );
-
-      setState(() {
-        _presentVolunteers = originalPresentState;
-        _updateDisplayList();
-      });
-    }
+    await _updateProfileAttendance(
+      name: name,
+      phone: phone,
+      previous: prevStatus,
+      current: newStatus,
+    );
   }
 
   Future<List<String>> getAllVolunteers() async {
@@ -309,58 +303,88 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     final Map<String, String> map = {};
 
     for (final doc in snapshot.docs) {
-      final data = doc.data() as Map<String, dynamic>?;
-      if (data != null && data.containsKey('volunteers')) {
+      final data = doc.data();
+      if (data.containsKey('volunteers')) {
         map.addAll(
           _parseVolunteerPhoneMap(List<String>.from(data['volunteers'])),
         );
       }
     }
+
+    allVolunteerPhoneMap = map; // ✅ STORE GLOBALLY
     return map.keys.toList()..sort();
   }
 
-  void addVolunteer(String name) {
-    _toggleAttendance(name, true);
+  Future<void> addVolunteer(String name) async {
+    if (_displayVolunteers.contains(name)) return;
+
+    final phone = allVolunteerPhoneMap[name]; // ✅ FIX
+    if (phone == null) return;
+
+    setState(() {
+      volunteerPhoneMap[name] = phone;
+      _displayVolunteers.add(name);
+      _displayVolunteers.sort();
+      _attendanceMap[name] = AttendanceStatus.present;
+    });
+
+    await _toggleAttendance(name, AttendanceStatus.present);
   }
 
   Future<void> _updateProfileAttendance({
     required String name,
     required String phone,
-    required bool isPresent,
+    required AttendanceStatus previous,
+    required AttendanceStatus current,
   }) async {
     final dateKey = DateFormat('dd-MM-yyyy').format(widget.selectedDate);
-    final docRef = FirebaseFirestore.instance.collection('profiles').doc(phone);
+    final ref = FirebaseFirestore.instance.collection('profiles').doc(phone);
 
     await FirebaseFirestore.instance.runTransaction((tx) async {
-      final snap = await tx.get(docRef);
+      final snap = await tx.get(ref);
+
+      int pDelta = 0;
+      int aDelta = 0;
+
+      if (previous == AttendanceStatus.none &&
+          current == AttendanceStatus.present) {
+        pDelta = 1;
+      }
+
+      if (previous == AttendanceStatus.none &&
+          current == AttendanceStatus.absent) {
+        aDelta = 1;
+      }
+
+      if (previous == AttendanceStatus.present &&
+          current == AttendanceStatus.absent) {
+        pDelta = -1;
+        aDelta = 1;
+      }
+
+      if (previous == AttendanceStatus.absent &&
+          current == AttendanceStatus.present) {
+        aDelta = -1;
+        pDelta = 1;
+      }
 
       if (!snap.exists) {
         tx.set(
-            docRef,
+            ref,
             VolunteerProfile(
               name: name,
               phone: phone,
-              presentDays: isPresent ? 1 : 0,
-              absentDays: isPresent ? 0 : 1,
-              attendanceLog: {dateKey: isPresent},
+              presentDays: pDelta > 0 ? pDelta : 0,
+              absentDays: aDelta > 0 ? aDelta : 0,
+              attendanceLog: {dateKey: current == AttendanceStatus.present},
             ).toMap());
         return;
       }
 
-      final data = snap.data()!;
-      final log = Map<String, dynamic>.from(data['attendanceLog'] ?? {});
-      final prev = log[dateKey];
-
-      if (prev == isPresent) return; // ✅ no double count
-
-      tx.update(docRef, {
-        'attendanceLog.$dateKey': isPresent,
-        if (prev == null)
-          isPresent ? 'presentDays' : 'absentDays': FieldValue.increment(1)
-        else ...{
-          'presentDays': FieldValue.increment(isPresent ? 1 : -1),
-          'absentDays': FieldValue.increment(isPresent ? -1 : 1),
-        }
+      tx.update(ref, {
+        'attendanceLog.$dateKey': current == AttendanceStatus.present,
+        if (pDelta != 0) 'presentDays': FieldValue.increment(pDelta),
+        if (aDelta != 0) 'absentDays': FieldValue.increment(aDelta),
       });
     });
   }
@@ -388,9 +412,13 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
       itemCount: _displayVolunteers.length,
       itemBuilder: (context, index) {
         final String volunteer = _displayVolunteers[index];
-        final String volunteerName =
-            "$volunteer - ${volunteerPhoneMap[volunteer]!}";
-        final isPresent = _presentVolunteers.contains(volunteer);
+        final phone = volunteerPhoneMap[volunteer] ?? "Unknown";
+        final volunteerName = "$volunteer - $phone";
+
+        final status = _attendanceMap[volunteer] ?? AttendanceStatus.none;
+
+        final isPresent = status == AttendanceStatus.present;
+        final isAbsent = status == AttendanceStatus.absent;
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           color: Colors.white,
@@ -416,53 +444,26 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
                   ),
                 ),
 
-                // PRESENT BUTTON
+                // PRESENT
                 GestureDetector(
-                  onTap: isPresent
-                      ? null
-                      : () => _toggleAttendance(volunteer, true),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isPresent
-                          ? Colors.green
-                          : Colors.green.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      "P",
-                      style: TextStyle(
-                        color: isPresent ? Colors.white : Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  onTap: () =>
+                      _toggleAttendance(volunteer, AttendanceStatus.present),
+                  child: CircleAvatar(
+                    backgroundColor: isPresent
+                        ? Colors.green
+                        : Colors.green.withOpacity(0.2),
+                    child: const Text("P"),
                   ),
                 ),
-
-                const SizedBox(width: 10),
-
-                // ABSENT BUTTON
+                const SizedBox(width: 8),
+                // ABSENT
                 GestureDetector(
-                  onTap: !isPresent
-                      ? null
-                      : () => _toggleAttendance(volunteerName, false),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: !isPresent
-                          ? Colors.red
-                          : Colors.red.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      "A",
-                      style: TextStyle(
-                        color: !isPresent ? Colors.white : Colors.red,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  onTap: () =>
+                      _toggleAttendance(volunteer, AttendanceStatus.absent),
+                  child: CircleAvatar(
+                    backgroundColor:
+                        isAbsent ? Colors.red : Colors.red.withOpacity(0.2),
+                    child: const Text("A"),
                   ),
                 ),
               ],

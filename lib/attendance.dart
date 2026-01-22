@@ -236,6 +236,15 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     if (!doc.exists) return {};
 
     final raw = Map<String, dynamic>.from(doc.data()!['attendance'] ?? {});
+
+    // Update volunteerPhoneMap for volunteers who have attendance
+    for (final name in raw.keys) {
+      if (allVolunteerPhoneMap.containsKey(name) &&
+          !volunteerPhoneMap.containsKey(name)) {
+        volunteerPhoneMap[name] = allVolunteerPhoneMap[name]!;
+      }
+    }
+
     return raw.map((k, v) {
       return MapEntry(
         k,
@@ -269,33 +278,46 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     String name,
     AttendanceStatus newStatus,
   ) async {
-    final phone = volunteerPhoneMap[name];
-    if (phone == null) return;
+    // Use allVolunteerPhoneMap instead of volunteerPhoneMap
+    final phone = allVolunteerPhoneMap[name];
+    if (phone == null) {
+      print('Error: Phone not found for $name');
+      return;
+    }
 
     final dateKey = DateFormat('dd-MM-yyyy').format(widget.selectedDate);
     final prevStatus = _attendanceMap[name] ?? AttendanceStatus.none;
 
     if (prevStatus == newStatus) return;
 
+    // Update local state first for immediate UI feedback
     setState(() {
       _attendanceMap[name] = newStatus;
     });
 
-    final attendanceRef =
-        FirebaseFirestore.instance.collection('attendance').doc(dateKey);
+    try {
+      final attendanceRef =
+          FirebaseFirestore.instance.collection('attendance').doc(dateKey);
 
-    await attendanceRef.set({
-      'attendance': {
-        name: newStatus == AttendanceStatus.present ? 'present' : 'absent'
-      }
-    }, SetOptions(merge: true));
+      await attendanceRef.set({
+        'attendance': {
+          name: newStatus == AttendanceStatus.present ? 'present' : 'absent'
+        }
+      }, SetOptions(merge: true));
 
-    await _updateProfileAttendance(
-      name: name,
-      phone: phone,
-      previous: prevStatus,
-      current: newStatus,
-    );
+      await _updateProfileAttendance(
+        name: name,
+        phone: phone,
+        previous: prevStatus,
+        current: newStatus,
+      );
+    } catch (e) {
+      print('Error updating attendance: $e');
+      // Revert state on error
+      setState(() {
+        _attendanceMap[name] = prevStatus;
+      });
+    }
   }
 
   Future<List<String>> getAllVolunteers() async {
@@ -320,17 +342,31 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
   Future<void> addVolunteer(String name) async {
     if (_displayVolunteers.contains(name)) return;
 
-    final phone = allVolunteerPhoneMap[name]; // ✅ FIX
+    final phone = allVolunteerPhoneMap[name];
     if (phone == null) return;
 
+    // First, save to database
+    final dateKey = DateFormat('dd-MM-yyyy').format(widget.selectedDate);
+    final attendanceRef =
+        FirebaseFirestore.instance.collection('attendance').doc(dateKey);
+
+    await attendanceRef.set({
+      'attendance': {name: 'present'}
+    }, SetOptions(merge: true));
+
+    await _updateProfileAttendance(
+      name: name,
+      phone: phone,
+      previous: AttendanceStatus.none,
+      current: AttendanceStatus.present,
+    );
+
+    // Then update local state
     setState(() {
       volunteerPhoneMap[name] = phone;
-      _displayVolunteers.add(name);
-      _displayVolunteers.sort();
       _attendanceMap[name] = AttendanceStatus.present;
+      _updateDisplayList();
     });
-
-    await _toggleAttendance(name, AttendanceStatus.present);
   }
 
   Future<void> _updateProfileAttendance({

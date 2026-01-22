@@ -62,8 +62,8 @@ class _AttendanceState extends State<Attendance> {
       builder: (context) {
         return AddVolunteerDialog(
           volunteers: selectableVolunteers,
-          onSelect: (name) {
-            listState.addVolunteer(name);
+          onSelect: (name) async {
+            await listState.addVolunteer(name);
           },
         );
       },
@@ -171,12 +171,14 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     _loadData();
   }
 
-  void _loadData() async {
+  Future<void> _loadData() async {
     if (!mounted) return;
 
     setState(() {
       _isLoading = true;
     });
+
+    await getAllVolunteers();
 
     final scheduled = await _getScheduledVolunteers(widget.selectedDate);
     final attendance = await _getAttendance(widget.selectedDate);
@@ -395,92 +397,109 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_displayVolunteers.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Text(
-            'No volunteers scheduled for this day.\nUse the + button to add a volunteer.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 16, color: Colors.grey.shade700, height: 1.5),
+      return RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.6,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Text(
+                  'No volunteers scheduled for this day.\nUse the + button to add a volunteer.\n\nPull down to refresh.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 16, color: Colors.grey.shade700, height: 1.5),
+                ),
+              ),
+            ),
           ),
         ),
       );
     }
 
-    return ListView.builder(
-      itemCount: _displayVolunteers.length,
-      itemBuilder: (context, index) {
-        final String volunteer = _displayVolunteers[index];
-        final phone = volunteerPhoneMap[volunteer] ?? "Unknown";
-        final volunteerName = "$volunteer - $phone";
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      color: Colors.green,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _displayVolunteers.length,
+        itemBuilder: (context, index) {
+          final String volunteer = _displayVolunteers[index];
+          final phone = allVolunteerPhoneMap[volunteer] ?? "Unknown";
+          final volunteerName = "$volunteer - $phone";
 
-        final status = _attendanceMap[volunteer] ?? AttendanceStatus.none;
+          final status = _attendanceMap[volunteer] ?? AttendanceStatus.none;
 
-        final isPresent = status == AttendanceStatus.present;
-        final isAbsent = status == AttendanceStatus.absent;
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: isPresent
-                ? BorderSide(color: Colors.green.shade400, width: 1.2)
-                : BorderSide.none,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                // Volunteer Name
-                Expanded(
-                  child: Text(
-                    volunteerName,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                      color: Colors.green.shade800,
+          final isPresent = status == AttendanceStatus.present;
+          final isAbsent = status == AttendanceStatus.absent;
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: isPresent
+                  ? BorderSide(color: Colors.green.shade400, width: 1.2)
+                  : BorderSide.none,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  // Volunteer Name
+                  Expanded(
+                    child: Text(
+                      volunteerName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                        color: Colors.green.shade800,
+                      ),
                     ),
                   ),
-                ),
 
-                // PRESENT
-                GestureDetector(
-                  onTap: () =>
-                      _toggleAttendance(volunteer, AttendanceStatus.present),
-                  child: CircleAvatar(
-                    backgroundColor: isPresent
-                        ? Colors.green
-                        : Colors.green.withOpacity(0.2),
-                    child: const Text("P"),
+                  // PRESENT
+                  GestureDetector(
+                    onTap: () =>
+                        _toggleAttendance(volunteer, AttendanceStatus.present),
+                    child: CircleAvatar(
+                      backgroundColor: isPresent
+                          ? Colors.green
+                          : Colors.green.withOpacity(0.2),
+                      child: const Text("P"),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                // ABSENT
-                GestureDetector(
-                  onTap: () =>
-                      _toggleAttendance(volunteer, AttendanceStatus.absent),
-                  child: CircleAvatar(
-                    backgroundColor:
-                        isAbsent ? Colors.red : Colors.red.withOpacity(0.2),
-                    child: const Text("A"),
+                  const SizedBox(width: 8),
+                  // ABSENT
+                  GestureDetector(
+                    onTap: () =>
+                        _toggleAttendance(volunteer, AttendanceStatus.absent),
+                    child: CircleAvatar(
+                      backgroundColor:
+                          isAbsent ? Colors.red : Colors.red.withOpacity(0.2),
+                      child: const Text("A"),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
 
 class AddVolunteerDialog extends StatefulWidget {
   final List<String> volunteers;
-  final Function(String) onSelect;
+  final Future<void> Function(String) onSelect;
 
-  const AddVolunteerDialog(
-      {super.key, required this.volunteers, required this.onSelect});
+  const AddVolunteerDialog({
+    super.key,
+    required this.volunteers,
+    required this.onSelect,
+  });
 
   @override
   State<AddVolunteerDialog> createState() => _AddVolunteerDialogState();
@@ -533,9 +552,9 @@ class _AddVolunteerDialogState extends State<AddVolunteerDialog> {
                   final volunteerName = _filteredVolunteers[index];
                   return ListTile(
                     title: Text(volunteerName),
-                    onTap: () {
-                      widget.onSelect(volunteerName);
-                      Navigator.pop(context);
+                    onTap: () async {
+                      await widget.onSelect(volunteerName);
+                      if (mounted) Navigator.pop(context);
                     },
                   );
                 },

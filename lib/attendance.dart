@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
 
 class Attendance extends StatefulWidget {
   const Attendance({super.key});
@@ -14,8 +16,67 @@ class Attendance extends StatefulWidget {
 class _AttendanceState extends State<Attendance> {
   final _listStateKey = GlobalKey<_VolunteerAttendanceListState>();
   DateTime _selectedDate = DateTime.now();
+  bool _isOnline = true;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialConnectivity();
+    _setupConnectivityListener();
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkInitialConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    setState(() {
+      _isOnline = !connectivityResult.contains(ConnectivityResult.none);
+    });
+  }
+
+  void _setupConnectivityListener() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      (List<ConnectivityResult> result) {
+        final isConnected = !result.contains(ConnectivityResult.none);
+        if (isConnected != _isOnline) {
+          setState(() {
+            _isOnline = isConnected;
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  isConnected
+                      ? '✓ Connected to internet'
+                      : '✗ No internet connection',
+                ),
+                backgroundColor: isConnected ? Colors.green : Colors.red,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+
+          // Reload data when connection is restored
+          if (isConnected) {
+            _listStateKey.currentState?._loadData();
+          }
+        }
+      },
+    );
+  }
 
   void _pickDate() async {
+    if (!_isOnline) {
+      _showNoInternetDialog();
+      return;
+    }
+
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
@@ -30,6 +91,11 @@ class _AttendanceState extends State<Attendance> {
   }
 
   void _showAddVolunteerDialog() async {
+    if (!_isOnline) {
+      _showNoInternetDialog();
+      return;
+    }
+
     final listState = _listStateKey.currentState;
     if (listState == null) return;
 
@@ -70,6 +136,30 @@ class _AttendanceState extends State<Attendance> {
     );
   }
 
+  void _showNoInternetDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.wifi_off, color: Colors.red.shade700),
+            const SizedBox(width: 8),
+            const Text('No Internet'),
+          ],
+        ),
+        content: const Text(
+          'Please check your internet connection and try again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -84,6 +174,40 @@ class _AttendanceState extends State<Attendance> {
         backgroundColor: Colors.green,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          // Connection Status Indicator
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _isOnline
+                      ? Colors.white.withOpacity(0.2)
+                      : Colors.red.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _isOnline ? Icons.wifi : Icons.wifi_off,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _isOnline ? 'Online' : 'Offline',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: _showAddVolunteerDialog,
@@ -122,6 +246,7 @@ class _AttendanceState extends State<Attendance> {
             child: VolunteerAttendanceList(
               key: _listStateKey,
               selectedDate: _selectedDate,
+              isOnline: _isOnline,
             ),
           ),
         ],
@@ -132,8 +257,13 @@ class _AttendanceState extends State<Attendance> {
 
 class VolunteerAttendanceList extends StatefulWidget {
   final DateTime selectedDate;
+  final bool isOnline;
 
-  const VolunteerAttendanceList({super.key, required this.selectedDate});
+  const VolunteerAttendanceList({
+    super.key,
+    required this.selectedDate,
+    required this.isOnline,
+  });
 
   @override
   State<VolunteerAttendanceList> createState() =>
@@ -174,19 +304,40 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
       _isLoading = true;
     });
 
-    await getAllVolunteers();
+    if (!widget.isOnline) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
 
-    final scheduled = await _getScheduledVolunteers(widget.selectedDate);
-    final attendance = await _getAttendance(widget.selectedDate);
+    try {
+      await getAllVolunteers();
 
-    if (!mounted) return;
+      final scheduled = await _getScheduledVolunteers(widget.selectedDate);
+      final attendance = await _getAttendance(widget.selectedDate);
 
-    setState(() {
-      _scheduledVolunteers = scheduled;
-      _attendanceMap = attendance;
-      _updateDisplayList();
-      _isLoading = false;
-    });
+      if (!mounted) return;
+
+      setState(() {
+        _scheduledVolunteers = scheduled;
+        _attendanceMap = attendance;
+        _updateDisplayList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading data: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _updateDisplayList() {
@@ -269,6 +420,11 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     String name,
     AttendanceStatus newStatus,
   ) async {
+    if (!widget.isOnline) {
+      _showNoInternetSnackbar();
+      return;
+    }
+
     final phone = allVolunteerPhoneMap[name];
     if (phone == null) {
       print('Error: Phone not found for $name');
@@ -315,7 +471,26 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
       setState(() {
         _attendanceMap[name] = prevStatus;
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update attendance: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
+  }
+
+  void _showNoInternetSnackbar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No internet connection. Please try again.'),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<List<String>> getAllVolunteers() async {
@@ -338,33 +513,49 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
   }
 
   Future<void> addVolunteer(String name) async {
+    if (!widget.isOnline) {
+      _showNoInternetSnackbar();
+      return;
+    }
+
     if (_displayVolunteers.contains(name)) return;
 
     final phone = allVolunteerPhoneMap[name];
     if (phone == null) return;
 
-    // First, save to database
-    final dateKey = DateFormat('dd-MM-yyyy').format(widget.selectedDate);
-    final attendanceRef =
-        FirebaseFirestore.instance.collection('attendance').doc(dateKey);
+    try {
+      // First, save to database
+      final dateKey = DateFormat('dd-MM-yyyy').format(widget.selectedDate);
+      final attendanceRef =
+          FirebaseFirestore.instance.collection('attendance').doc(dateKey);
 
-    await attendanceRef.set({
-      'attendance': {name: 'present'}
-    }, SetOptions(merge: true));
+      await attendanceRef.set({
+        'attendance': {name: 'present'}
+      }, SetOptions(merge: true));
 
-    await _updateProfileAttendance(
-      name: name,
-      phone: phone,
-      previous: AttendanceStatus.none,
-      current: AttendanceStatus.present,
-    );
+      await _updateProfileAttendance(
+        name: name,
+        phone: phone,
+        previous: AttendanceStatus.none,
+        current: AttendanceStatus.present,
+      );
 
-    // Then update local state
-    setState(() {
-      volunteerPhoneMap[name] = phone;
-      _attendanceMap[name] = AttendanceStatus.present;
-      _updateDisplayList();
-    });
+      // Then update local state
+      setState(() {
+        volunteerPhoneMap[name] = phone;
+        _attendanceMap[name] = AttendanceStatus.present;
+        _updateDisplayList();
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to add volunteer: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _updateProfileAttendance({
@@ -459,6 +650,47 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
+
+    if (!widget.isOnline) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.wifi_off, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              'No Internet Connection',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Please check your connection',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _loadData,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (_displayVolunteers.isEmpty) {
       return RefreshIndicator(
         onRefresh: _loadData,

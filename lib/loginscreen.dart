@@ -14,7 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
-  bool _passwordVisible = false; // Track password visibility
+  bool _passwordVisible = false;
   User? _currentUser;
 
   @override
@@ -75,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [Colors.black87, Colors.black54],
             begin: Alignment.topCenter,
@@ -84,6 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: Stack(
           children: [
+            // Background decorations
             Positioned(
               top: -50,
               left: -50,
@@ -108,21 +109,46 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
+
+            // Back button positioned at top-left
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_back,
+                      color: Colors.white,
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+            ),
+
+            // Main content
             Center(
               child: SingleChildScrollView(
                 child: FadeIn(
-                  duration: Duration(seconds: 1),
+                  duration: const Duration(seconds: 1),
                   child: Padding(
                     padding: const EdgeInsets.all(20.0),
                     child: _currentUser == null
                         ? Column(
                             children: [
-                              CircleAvatar(
+                              const CircleAvatar(
                                 radius: 60,
                                 backgroundImage:
                                     AssetImage('assets/images/logo.jpg'),
                               ),
-                              SizedBox(height: 20),
+                              const SizedBox(height: 20),
                               Text(
                                 "Welcome Back",
                                 style: GoogleFonts.poppins(
@@ -131,7 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: Colors.white,
                                 ),
                               ),
-                              SizedBox(height: 10),
+                              const SizedBox(height: 10),
                               Text(
                                 "Login to your account",
                                 style: GoogleFonts.poppins(
@@ -139,13 +165,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: Colors.white70,
                                 ),
                               ),
-                              SizedBox(height: 30),
+                              const SizedBox(height: 30),
                               Form(
                                 key: _formKey,
                                 child: Column(
                                   children: [
                                     BounceInLeft(
-                                      duration: Duration(seconds: 1),
+                                      duration: const Duration(seconds: 1),
                                       child: TextFormField(
                                         controller: _emailController,
                                         validator: (value) {
@@ -156,7 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         },
                                         decoration: InputDecoration(
                                           labelText: "Email",
-                                          prefixIcon: Icon(Icons.email,
+                                          prefixIcon: const Icon(Icons.email,
                                               color: Colors.white),
                                           filled: true,
                                           fillColor:

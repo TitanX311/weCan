@@ -84,10 +84,6 @@ class _AttendanceState extends State<Attendance> {
         backgroundColor: Colors.green,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          // IconButton(
-          //   icon: const Icon(Icons.calendar_today),
-          //   onPressed: _pickDate,
-          // ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: _showAddVolunteerDialog,
@@ -218,11 +214,6 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     // Build phone map
     volunteerPhoneMap = _parseVolunteerPhoneMap(rawList);
 
-    /// volunteerPhoneMap = {
-    ///   "name":"ph no",
-    /// }
-
-    // Return only names for UI
     return volunteerPhoneMap.keys.toList();
   }
 
@@ -278,7 +269,6 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     String name,
     AttendanceStatus newStatus,
   ) async {
-    // Use allVolunteerPhoneMap instead of volunteerPhoneMap
     final phone = allVolunteerPhoneMap[name];
     if (phone == null) {
       print('Error: Phone not found for $name');
@@ -299,11 +289,19 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
       final attendanceRef =
           FirebaseFirestore.instance.collection('attendance').doc(dateKey);
 
-      await attendanceRef.set({
-        'attendance': {
-          name: newStatus == AttendanceStatus.present ? 'present' : 'absent'
-        }
-      }, SetOptions(merge: true));
+      if (newStatus == AttendanceStatus.none) {
+        // Remove the volunteer from attendance document
+        await attendanceRef.update({
+          'attendance.$name': FieldValue.delete(),
+        });
+      } else {
+        // Set present or absent
+        await attendanceRef.set({
+          'attendance': {
+            name: newStatus == AttendanceStatus.present ? 'present' : 'absent'
+          }
+        }, SetOptions(merge: true));
+      }
 
       await _updateProfileAttendance(
         name: name,
@@ -335,7 +333,7 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
       }
     }
 
-    allVolunteerPhoneMap = map; // ✅ STORE GLOBALLY
+    allVolunteerPhoneMap = map;
     return map.keys.toList()..sort();
   }
 
@@ -384,46 +382,75 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
       int pDelta = 0;
       int aDelta = 0;
 
+      // From none to present
       if (previous == AttendanceStatus.none &&
           current == AttendanceStatus.present) {
         pDelta = 1;
       }
 
+      // From none to absent
       if (previous == AttendanceStatus.none &&
           current == AttendanceStatus.absent) {
         aDelta = 1;
       }
 
+      // From present to absent
       if (previous == AttendanceStatus.present &&
           current == AttendanceStatus.absent) {
         pDelta = -1;
         aDelta = 1;
       }
 
+      // From absent to present
       if (previous == AttendanceStatus.absent &&
           current == AttendanceStatus.present) {
         aDelta = -1;
         pDelta = 1;
       }
 
+      // From present to none (UNDO)
+      if (previous == AttendanceStatus.present &&
+          current == AttendanceStatus.none) {
+        pDelta = -1;
+      }
+
+      // From absent to none (UNDO)
+      if (previous == AttendanceStatus.absent &&
+          current == AttendanceStatus.none) {
+        aDelta = -1;
+      }
+
       if (!snap.exists) {
-        tx.set(
-            ref,
-            VolunteerProfile(
-              name: name,
-              phone: phone,
-              presentDays: pDelta > 0 ? pDelta : 0,
-              absentDays: aDelta > 0 ? aDelta : 0,
-              attendanceLog: {dateKey: current == AttendanceStatus.present},
-            ).toMap());
+        // Only create if we're marking present or absent, not for undo to none
+        if (current != AttendanceStatus.none) {
+          tx.set(
+              ref,
+              VolunteerProfile(
+                name: name,
+                phone: phone,
+                presentDays: pDelta > 0 ? pDelta : 0,
+                absentDays: aDelta > 0 ? aDelta : 0,
+                attendanceLog: {dateKey: current == AttendanceStatus.present},
+              ).toMap());
+        }
         return;
       }
 
-      tx.update(ref, {
-        'attendanceLog.$dateKey': current == AttendanceStatus.present,
-        if (pDelta != 0) 'presentDays': FieldValue.increment(pDelta),
-        if (aDelta != 0) 'absentDays': FieldValue.increment(aDelta),
-      });
+      // Update existing profile
+      final Map<String, dynamic> updates = {};
+
+      if (current == AttendanceStatus.none) {
+        // Remove from attendance log
+        updates['attendanceLog.$dateKey'] = FieldValue.delete();
+      } else {
+        // Update attendance log
+        updates['attendanceLog.$dateKey'] = current == AttendanceStatus.present;
+      }
+
+      if (pDelta != 0) updates['presentDays'] = FieldValue.increment(pDelta);
+      if (aDelta != 0) updates['absentDays'] = FieldValue.increment(aDelta);
+
+      tx.update(ref, updates);
     });
   }
 
@@ -470,6 +497,8 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
 
           final isPresent = status == AttendanceStatus.present;
           final isAbsent = status == AttendanceStatus.absent;
+          final isNone = status == AttendanceStatus.none;
+
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             color: Colors.white,
@@ -477,7 +506,9 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
               borderRadius: BorderRadius.circular(8),
               side: isPresent
                   ? BorderSide(color: Colors.green.shade400, width: 1.2)
-                  : BorderSide.none,
+                  : isAbsent
+                      ? BorderSide(color: Colors.red.shade400, width: 1.2)
+                      : BorderSide.none,
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -495,7 +526,7 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
                     ),
                   ),
 
-                  // PRESENT
+                  // PRESENT Button
                   GestureDetector(
                     onTap: () =>
                         _toggleAttendance(volunteer, AttendanceStatus.present),
@@ -503,20 +534,49 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
                       backgroundColor: isPresent
                           ? Colors.green
                           : Colors.green.withOpacity(0.2),
-                      child: const Text("P"),
+                      child: Text(
+                        "P",
+                        style: TextStyle(
+                          color: isPresent ? Colors.white : Colors.green,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // ABSENT
+
+                  // ABSENT Button
                   GestureDetector(
                     onTap: () =>
                         _toggleAttendance(volunteer, AttendanceStatus.absent),
                     child: CircleAvatar(
                       backgroundColor:
                           isAbsent ? Colors.red : Colors.red.withOpacity(0.2),
-                      child: const Text("A"),
+                      child: Text(
+                        "A",
+                        style: TextStyle(
+                          color: isAbsent ? Colors.white : Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+
+                  // UNDO Button (only show when marked)
+                  if (!isNone)
+                    GestureDetector(
+                      onTap: () =>
+                          _toggleAttendance(volunteer, AttendanceStatus.none),
+                      child: CircleAvatar(
+                        backgroundColor: Colors.grey.shade300,
+                        child: Icon(
+                          Icons.undo,
+                          color: Colors.grey.shade700,
+                          size: 20,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

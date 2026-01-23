@@ -15,18 +15,28 @@ class AttendanceDetailsPage extends StatefulWidget {
 
 class _AttendanceDetailsPageState extends State<AttendanceDetailsPage> {
   late Future<List<VolunteerProfile>> _profilesFuture;
+  List<VolunteerProfile> _allProfiles = [];
+  List<VolunteerProfile> _filteredProfiles = [];
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _profilesFuture = _fetchProfiles();
+    _searchController.addListener(_filterProfiles);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<List<VolunteerProfile>> _fetchProfiles() async {
     final snapshot =
         await FirebaseFirestore.instance.collection('profiles').get();
 
-    return snapshot.docs.map((doc) {
+    final profiles = snapshot.docs.map((doc) {
       final data = doc.data();
       return VolunteerProfile(
         name: data['name'] ?? '',
@@ -38,14 +48,36 @@ class _AttendanceDetailsPageState extends State<AttendanceDetailsPage> {
       );
     }).toList()
       ..sort((a, b) => a.name.compareTo(b.name));
+
+    setState(() {
+      _allProfiles = profiles;
+      _filteredProfiles = profiles;
+    });
+
+    return profiles;
+  }
+
+  void _filterProfiles() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredProfiles = _allProfiles;
+      } else {
+        _filteredProfiles = _allProfiles.where((profile) {
+          return profile.name.toLowerCase().contains(query) ||
+              profile.phone.toLowerCase().contains(query);
+        }).toList();
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        centerTitle: true,
         title: Text(
-          'Volunteer Attendance Stats',
+          'Attendance Stats',
           style: GoogleFonts.playfairDisplay(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -54,46 +86,107 @@ class _AttendanceDetailsPageState extends State<AttendanceDetailsPage> {
         backgroundColor: Colors.green,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: FutureBuilder<List<VolunteerProfile>>(
-        future: _profilesFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Column(
+        children: [
+          // Search Box
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by name or phone...',
+                prefixIcon: const Icon(Icons.search, color: Colors.green),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.green.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.green, width: 2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.green.shade200),
+                ),
+                filled: true,
+                fillColor: Colors.green.shade50,
+              ),
+            ),
+          ),
 
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No volunteers found.'));
-          }
+          // List of Volunteers
+          Expanded(
+            child: FutureBuilder<List<VolunteerProfile>>(
+              future: _profilesFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-          final profiles = snapshot.data!;
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(child: Text('No volunteers found.'));
+                }
 
-          return ListView.builder(
-            itemCount: profiles.length,
-            itemBuilder: (context, index) {
-              final profile = profiles[index];
+                if (_filteredProfiles.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off,
+                            size: 64, color: Colors.grey.shade400),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No volunteers found',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
 
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: ListTile(
-                  title: Text(
-                    profile.name,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(profile.phone),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => VolunteerStatsPage(profile: profile),
+                return ListView.builder(
+                  itemCount: _filteredProfiles.length,
+                  itemBuilder: (context, index) {
+                    final profile = _filteredProfiles[index];
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: ListTile(
+                        title: Text(
+                          profile.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(profile.phone),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  VolunteerStatsPage(profile: profile),
+                            ),
+                          );
+                        },
                       ),
                     );
                   },
-                ),
-              );
-            },
-          );
-        },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

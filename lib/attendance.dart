@@ -570,59 +570,17 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
     await FirebaseFirestore.instance.runTransaction((tx) async {
       final snap = await tx.get(ref);
 
-      int pDelta = 0;
-      int aDelta = 0;
-
-      // From none to present
-      if (previous == AttendanceStatus.none &&
-          current == AttendanceStatus.present) {
-        pDelta = 1;
-      }
-
-      // From none to absent
-      if (previous == AttendanceStatus.none &&
-          current == AttendanceStatus.absent) {
-        aDelta = 1;
-      }
-
-      // From present to absent
-      if (previous == AttendanceStatus.present &&
-          current == AttendanceStatus.absent) {
-        pDelta = -1;
-        aDelta = 1;
-      }
-
-      // From absent to present
-      if (previous == AttendanceStatus.absent &&
-          current == AttendanceStatus.present) {
-        aDelta = -1;
-        pDelta = 1;
-      }
-
-      // From present to none (UNDO)
-      if (previous == AttendanceStatus.present &&
-          current == AttendanceStatus.none) {
-        pDelta = -1;
-      }
-
-      // From absent to none (UNDO)
-      if (previous == AttendanceStatus.absent &&
-          current == AttendanceStatus.none) {
-        aDelta = -1;
-      }
-
       if (!snap.exists) {
         // Only create if we're marking present or absent, not for undo to none
         if (current != AttendanceStatus.none) {
           tx.set(
-              ref,
-              VolunteerProfile(
-                name: name,
-                phone: phone,
-                presentDays: pDelta > 0 ? pDelta : 0,
-                absentDays: aDelta > 0 ? aDelta : 0,
-                attendanceLog: {dateKey: current == AttendanceStatus.present},
-              ).toMap());
+            ref,
+            VolunteerProfile(
+              name: name,
+              phone: phone,
+              attendanceLog: {dateKey: current == AttendanceStatus.present},
+            ).toMap(),
+          );
         }
         return;
       }
@@ -637,9 +595,6 @@ class _VolunteerAttendanceListState extends State<VolunteerAttendanceList> {
         // Update attendance log
         updates['attendanceLog.$dateKey'] = current == AttendanceStatus.present;
       }
-
-      if (pDelta != 0) updates['presentDays'] = FieldValue.increment(pDelta);
-      if (aDelta != 0) updates['absentDays'] = FieldValue.increment(aDelta);
 
       tx.update(ref, updates);
     });

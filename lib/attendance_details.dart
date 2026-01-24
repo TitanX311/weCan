@@ -42,8 +42,6 @@ class _AttendanceDetailsPageState extends State<AttendanceDetailsPage> {
         name: data['name'] ?? '',
         phone: data['phone'] ?? doc.id,
         email: data['email'] ?? '',
-        presentDays: data['presentDays'] ?? 0,
-        absentDays: data['absentDays'] ?? 0,
         attendanceLog: Map<String, bool>.from(data['attendanceLog'] ?? {}),
       );
     }).toList()

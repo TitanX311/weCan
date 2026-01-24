@@ -1,4 +1,5 @@
 import 'package:WeCan/homescreen.dart';
+import 'package:WeCan/registerscreen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
@@ -266,6 +267,40 @@ class _LoginScreenState extends State<LoginScreen> {
                                                     color: Colors.white),
                                               ),
                                       ),
+                                    ),
+                                    SizedBox(height: 20),
+                                    // Register button/link
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          "Don't have an account? ",
+                                          style: GoogleFonts.poppins(
+                                            color: Colors.white70,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        GestureDetector(
+                                          onTap: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    RegisterScreen(),
+                                              ),
+                                            );
+                                          },
+                                          child: Text(
+                                            "Register",
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.tealAccent,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),

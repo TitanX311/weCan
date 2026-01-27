@@ -23,6 +23,7 @@ class _VolunteerEditPageState extends State<VolunteerEditPage> {
   late List<String> volunteers;
   late List<TextEditingController> _volunteerControllers;
   bool isEditing = false;
+  bool _isVolunteerEdit = false;
   User? currentUser;
 
   @override
@@ -35,6 +36,7 @@ class _VolunteerEditPageState extends State<VolunteerEditPage> {
 
     // Get the current user
     currentUser = FirebaseAuth.instance.currentUser;
+    _loadAdminStatus();
   }
 
   @override
@@ -87,6 +89,38 @@ class _VolunteerEditPageState extends State<VolunteerEditPage> {
       _volunteerControllers.removeAt(index);
       volunteers.removeAt(index);
     });
+  }
+
+  Future<void> _loadAdminStatus() async {
+    final isAdmin = await isUserAdmin();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isVolunteerEdit = isAdmin;
+    });
+  }
+
+  Future<bool> isUserAdmin() async {
+    final user = FirebaseAuth.instance.currentUser;
+    print(user);
+
+    if (user == null || user.email == null) {
+      return false;
+    }
+
+    final email = user.email!.trim().toLowerCase();
+
+    final doc = await FirebaseFirestore.instance
+        .collection('permissions')
+        .doc('volunteer_edit')
+        .get();
+
+    if (!doc.exists) return false;
+
+    final List admins = doc.data()?['admin_list'] ?? [];
+    print(admins.contains(email));
+    return admins.contains(email);
   }
 
   @override
@@ -149,7 +183,8 @@ class _VolunteerEditPageState extends State<VolunteerEditPage> {
                             itemCount: _volunteerControllers.length,
                             itemBuilder: (context, index) {
                               return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 12.0),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12.0),
                                 child: Row(
                                   children: [
                                     Expanded(
@@ -159,33 +194,40 @@ class _VolunteerEditPageState extends State<VolunteerEditPage> {
                                           color: isEditing
                                               ? Colors.grey.shade100
                                               : Colors.green.shade50,
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
                                           boxShadow: [
                                             BoxShadow(
                                               blurRadius: 8,
-                                              color: Colors.green.withOpacity(0.1),
+                                              color:
+                                                  Colors.green.withOpacity(0.1),
                                             ),
                                           ],
                                         ),
                                         child: TextField(
-                                          controller: _volunteerControllers[index],
+                                          controller:
+                                              _volunteerControllers[index],
                                           enabled: isEditing,
                                           style: TextStyle(color: Colors.black),
                                           decoration: InputDecoration(
                                             hintText: "Enter volunteer name",
-                                            hintStyle:
-                                            TextStyle(color: Colors.grey.shade500),
+                                            hintStyle: TextStyle(
+                                                color: Colors.grey.shade500),
                                             border: InputBorder.none,
-                                            contentPadding: EdgeInsets.symmetric(
-                                                vertical: 12, horizontal: 16),
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                    vertical: 12,
+                                                    horizontal: 16),
                                           ),
                                         ),
                                       ),
                                     ),
                                     if (isEditing)
                                       IconButton(
-                                        icon: Icon(Icons.remove_circle, color: Colors.red),
-                                        onPressed: () => removeVolunteerField(index),
+                                        icon: Icon(Icons.remove_circle,
+                                            color: Colors.red),
+                                        onPressed: () =>
+                                            removeVolunteerField(index),
                                       ),
                                   ],
                                 ),
@@ -207,7 +249,8 @@ class _VolunteerEditPageState extends State<VolunteerEditPage> {
                                 ),
                                 label: Text(
                                   "Add Volunteer",
-                                  style: TextStyle(fontSize: 16, color: Colors.white),
+                                  style: TextStyle(
+                                      fontSize: 16, color: Colors.white),
                                 ),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green.shade600,
@@ -220,7 +263,7 @@ class _VolunteerEditPageState extends State<VolunteerEditPage> {
                               ),
                             ),
                           ),
-                        if (currentUser != null)
+                        if (_isVolunteerEdit)
                           Padding(
                             padding: const EdgeInsets.only(top: 20.0),
                             child: Align(
@@ -238,7 +281,8 @@ class _VolunteerEditPageState extends State<VolunteerEditPage> {
                                 ),
                                 child: Text(
                                   isEditing ? "Save Changes" : "Edit",
-                                  style: TextStyle(fontSize: 18, color: Colors.white),
+                                  style: TextStyle(
+                                      fontSize: 18, color: Colors.white),
                                 ),
                               ),
                             ),

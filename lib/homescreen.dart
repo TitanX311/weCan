@@ -74,6 +74,10 @@ class _HomescreenState extends State<Homescreen> {
     });
   }
 
+  bool isLoggedIn() {
+    return FirebaseAuth.instance.currentUser != null;
+  }
+
   Future<bool> isUserAdmin() async {
     final user = FirebaseAuth.instance.currentUser;
     print(user);
@@ -85,8 +89,8 @@ class _HomescreenState extends State<Homescreen> {
     final email = user.email!.trim().toLowerCase();
 
     final doc = await FirebaseFirestore.instance
-        .collection('attendance_permission')
-        .doc('admins')
+        .collection('permissions')
+        .doc('attendance')
         .get();
 
     if (!doc.exists) return false;
@@ -104,6 +108,7 @@ class _HomescreenState extends State<Homescreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool currState = isLoggedIn();
     return Scaffold(
       appBar: AppBar(
         iconTheme: const IconThemeData(
@@ -190,22 +195,6 @@ class _HomescreenState extends State<Homescreen> {
                 padding: EdgeInsets.zero,
                 children: [
                   ListTile(
-                    leading:
-                        const Icon(Icons.image_outlined, color: Colors.green),
-                    title: const Text(
-                      'Add Images',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const CarouselPage()),
-                      );
-                    },
-                  ),
-                  ListTile(
                     leading: const Icon(Icons.login, color: Colors.green),
                     title: const Text(
                       'Login',
@@ -219,21 +208,39 @@ class _HomescreenState extends State<Homescreen> {
                       );
                     },
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.people, color: Colors.green),
-                    title: const Text(
-                      'Attendance Details',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  if (currState) ...[
+                    ListTile(
+                      leading:
+                          const Icon(Icons.image_outlined, color: Colors.green),
+                      title: const Text(
+                        'Add Images',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w500),
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const CarouselPage()),
+                        );
+                      },
                     ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => AttendanceDetailsPage()),
-                      );
-                    },
-                  ),
+                    ListTile(
+                      leading: const Icon(Icons.people, color: Colors.green),
+                      title: const Text(
+                        'Attendance Details',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w500),
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => AttendanceDetailsPage()),
+                        );
+                      },
+                    ),
+                  ],
                   if (_isAdmin) ...[
                     ListTile(
                       leading: const Icon(Icons.add, color: Colors.green),

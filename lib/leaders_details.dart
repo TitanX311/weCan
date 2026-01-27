@@ -5,37 +5,84 @@ import 'package:firebase_auth/firebase_auth.dart'; // ✅ Import FirebaseAuth
 import 'package:url_launcher/url_launcher_string.dart';
 import 'leader_form.dart';
 
-class LeaderDetailsScreen extends StatelessWidget {
+class LeaderDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> leaderData;
   final String leaderId;
 
   LeaderDetailsScreen({required this.leaderData, required this.leaderId});
 
   @override
+  State<LeaderDetailsScreen> createState() => _LeaderDetailsScreenState();
+}
+
+class _LeaderDetailsScreenState extends State<LeaderDetailsScreen> {
+  bool _isLeaderEdit = false;
+
+  Future<void> _loadAdminStatus() async {
+    final isAdmin = await isUserAdmin();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLeaderEdit = isAdmin;
+    });
+  }
+
+  Future<bool> isUserAdmin() async {
+    final user = FirebaseAuth.instance.currentUser;
+    print(user);
+
+    if (user == null || user.email == null) {
+      return false;
+    }
+
+    final email = user.email!.trim().toLowerCase();
+
+    final doc = await FirebaseFirestore.instance
+        .collection('permissions')
+        .doc('leader_edit')
+        .get();
+
+    if (!doc.exists) return false;
+
+    final List admins = doc.data()?['admin_list'] ?? [];
+    return admins.contains(email);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAdminStatus();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final User? user = FirebaseAuth.instance.currentUser; // ✅ Get the logged-in user
+    final User? user =
+        FirebaseAuth.instance.currentUser; // ✅ Get the logged-in user
 
     return Scaffold(
       backgroundColor: Colors.blue[50],
       appBar: AppBar(
         title: Text(
-          leaderData['name'] ?? "Leader Details",
-          style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white),
+          widget.leaderData['name'] ?? "Leader Details",
+          style: GoogleFonts.montserrat(
+              fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white),
         ),
         backgroundColor: Colors.teal,
         elevation: 3,
         iconTheme: IconThemeData(color: Colors.white),
-        actions: user != null
-            ? [ // ✅ Show options only if the user is logged in
-          IconButton(
-            icon: Icon(Icons.edit, color: Colors.white),
-            onPressed: () => _editLeader(context),
-          ),
-          IconButton(
-            icon: Icon(Icons.delete, color: Colors.white),
-            onPressed: () => _deleteLeader(context),
-          ),
-        ]
+        actions: _isLeaderEdit
+            ? [
+                // ✅ Show options only if the user is logged in
+                IconButton(
+                  icon: Icon(Icons.edit, color: Colors.white),
+                  onPressed: () => _editLeader(context),
+                ),
+                IconButton(
+                  icon: Icon(Icons.delete, color: Colors.white),
+                  onPressed: () => _deleteLeader(context),
+                ),
+              ]
             : [], // ✅ Empty list if user is not logged in
       ),
       body: SingleChildScrollView(
@@ -45,23 +92,24 @@ class LeaderDetailsScreen extends StatelessWidget {
           children: [
             // 🚀 Profile Image
             Hero(
-              tag: leaderData['image_url'] ?? '',
+              tag: widget.leaderData['image_url'] ?? '',
               child: CircleAvatar(
                 radius: 75,
                 backgroundColor: Colors.teal,
                 child: CircleAvatar(
                   radius: 70,
                   backgroundColor: Colors.white,
-                  backgroundImage: leaderData['image_url'] != null
-                      ? NetworkImage(leaderData['image_url'])
-                      : AssetImage("assets/default_avatar.png") as ImageProvider,
+                  backgroundImage: widget.leaderData['image_url'] != null
+                      ? NetworkImage(widget.leaderData['image_url'])
+                      : AssetImage("assets/default_avatar.png")
+                          as ImageProvider,
                 ),
               ),
             ),
             SizedBox(height: 15),
             _buildInfoCard(
               icon: Icons.person,
-              text: leaderData['name'] ?? "Unknown",
+              text: widget.leaderData['name'] ?? "Unknown",
               fontSize: 16,
               fontWeight: FontWeight.w600,
               cardColor: Colors.purple[100]!,
@@ -70,7 +118,7 @@ class LeaderDetailsScreen extends StatelessWidget {
             SizedBox(height: 10),
             _buildInfoCard(
               icon: Icons.star,
-              text: leaderData['position'] ?? "Volunteer",
+              text: widget.leaderData['position'] ?? "Volunteer",
               fontSize: 14,
               fontWeight: FontWeight.w500,
               cardColor: Colors.orange[100]!,
@@ -79,29 +127,29 @@ class LeaderDetailsScreen extends StatelessWidget {
             SizedBox(height: 10),
             _buildInfoCard(
               icon: Icons.calendar_today,
-              text: "Year: ${leaderData['year']}",
+              text: "Year: ${widget.leaderData['year']}",
               fontSize: 13,
               fontWeight: FontWeight.w400,
               cardColor: Colors.green[100]!,
               textColor: Colors.green[900]!,
             ),
             SizedBox(height: 10),
-            if (leaderData['email'] != null)
+            if (widget.leaderData['email'] != null)
               _buildClickableCard(
                 context: context,
                 icon: Icons.email,
-                text: leaderData['email'],
-                url: "mailto:${leaderData['email']}",
+                text: widget.leaderData['email'],
+                url: "mailto:${widget.leaderData['email']}",
                 cardColor: Colors.blue[100]!,
                 textColor: Colors.blue[900]!,
               ),
             SizedBox(height: 10),
-            if (leaderData['linkedin'] != null)
+            if (widget.leaderData['linkedin'] != null)
               _buildClickableCard(
                 context: context,
                 icon: Icons.link,
                 text: "LinkedIn Profile",
-                url: leaderData['linkedin'],
+                url: widget.leaderData['linkedin'],
                 cardColor: Colors.indigo[100]!,
                 textColor: Colors.indigo[900]!,
               ),
@@ -127,7 +175,9 @@ class LeaderDetailsScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(10),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, spreadRadius: 1)],
+        boxShadow: [
+          BoxShadow(color: Colors.black12, blurRadius: 4, spreadRadius: 1)
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -137,7 +187,8 @@ class LeaderDetailsScreen extends StatelessWidget {
           Text(
             text,
             textAlign: TextAlign.center,
-            style: GoogleFonts.montserrat(fontSize: fontSize, fontWeight: fontWeight, color: textColor),
+            style: GoogleFonts.montserrat(
+                fontSize: fontSize, fontWeight: fontWeight, color: textColor),
           ),
         ],
       ),
@@ -159,7 +210,8 @@ class LeaderDetailsScreen extends StatelessWidget {
         print("Opening URL: $encodedUrl"); // Debugging
 
         if (await canLaunchUrlString(encodedUrl)) {
-          await launchUrlString(encodedUrl, mode: LaunchMode.externalApplication);
+          await launchUrlString(encodedUrl,
+              mode: LaunchMode.externalApplication);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("Could not open link: $url")),
@@ -172,7 +224,9 @@ class LeaderDetailsScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: cardColor,
           borderRadius: BorderRadius.circular(10),
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, spreadRadius: 1)],
+          boxShadow: [
+            BoxShadow(color: Colors.black12, blurRadius: 4, spreadRadius: 1)
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -182,7 +236,11 @@ class LeaderDetailsScreen extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: GoogleFonts.montserrat(fontSize: 14, fontWeight: FontWeight.w500, color: textColor, decoration: TextDecoration.underline),
+              style: GoogleFonts.montserrat(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: textColor,
+                  decoration: TextDecoration.underline),
             ),
           ],
         ),
@@ -195,7 +253,8 @@ class LeaderDetailsScreen extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => LeaderFormScreen(leaderId: leaderId, leaderData: leaderData),
+        builder: (context) => LeaderFormScreen(
+            leaderId: widget.leaderId, leaderData: widget.leaderData),
       ),
     );
   }
@@ -208,20 +267,21 @@ class LeaderDetailsScreen extends StatelessWidget {
         title: Text("Delete Leader"),
         content: Text("Are you sure you want to remove this leader?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: Text("Cancel")),
           TextButton(
             onPressed: () async {
-              await FirebaseFirestore.instance.collection('leaders').doc(leaderId).delete();
+              await FirebaseFirestore.instance
+                  .collection('leaders')
+                  .doc(widget.leaderId)
+                  .delete();
               Navigator.pop(context);
               Navigator.pop(context);
             },
             child: Text("Delete", style: TextStyle(color: Colors.red)),
-
           ),
         ],
-
       ),
     );
   }
 }
-

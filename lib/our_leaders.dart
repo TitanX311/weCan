@@ -1,3 +1,4 @@
+import 'package:WeCan/db_services/firestore_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,9 +18,12 @@ class _OurLeadersScreenState extends State<OurLeadersScreen> {
       FirebaseFirestore.instance.collection('leaders');
   bool isLoggedIn = false;
 
+  bool _isLeaderEdit = false;
+
   @override
   void initState() {
     super.initState();
+    _loadAdminStatus();
     _checkLoginStatus();
   }
 
@@ -28,6 +32,37 @@ class _OurLeadersScreenState extends State<OurLeadersScreen> {
     setState(() {
       isLoggedIn = user != null;
     });
+  }
+
+  Future<void> _loadAdminStatus() async {
+    final isAdmin = await isUserAdmin();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLeaderEdit = isAdmin;
+    });
+  }
+
+  Future<bool> isUserAdmin() async {
+    final user = FirebaseAuth.instance.currentUser;
+    print(user);
+
+    if (user == null || user.email == null) {
+      return false;
+    }
+
+    final email = user.email!.trim().toLowerCase();
+
+    final doc = await FirebaseFirestore.instance
+        .collection('permissions')
+        .doc('leader_edit')
+        .get();
+
+    if (!doc.exists) return false;
+
+    final List admins = doc.data()?['admin_list'] ?? [];
+    return admins.contains(email);
   }
 
   @override
@@ -190,7 +225,7 @@ class _OurLeadersScreenState extends State<OurLeadersScreen> {
           );
         },
       ),
-      floatingActionButton: isLoggedIn
+      floatingActionButton: _isLeaderEdit
           ? FloatingActionButton(
               backgroundColor: Colors.teal,
               elevation: 5,

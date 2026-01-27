@@ -181,8 +181,8 @@ class _OurLeadersScreenState extends State<OurLeadersScreen> {
                                   fontWeight: FontWeight.bold,
                                   color: Colors.black87),
                               textAlign: TextAlign.center,
-                              maxLines: 1, // 🔹 Prevents overflow
-                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                              overflow: TextOverflow.visible,
                             ),
                             const SizedBox(height: 4),
                             Container(
